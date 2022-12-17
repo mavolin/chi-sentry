@@ -139,7 +139,8 @@ func (h *Handler) handle(handler http.Handler) http.HandlerFunc {
 		handler.ServeHTTP(w, r)
 
 		rctx := chi.RouteContext(r.Context())
-		sentry.GetHubFromContext(transaction.Context()).Scope().SetTransaction(rctx.RoutePattern())
+		name := rctx.RouteMethod + " " + rctx.RoutePattern()
+		sentry.GetHubFromContext(transaction.Context()).Scope().SetTransaction(name)
 	}
 }
 
