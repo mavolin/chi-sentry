@@ -37,6 +37,7 @@ import (
 
 	"github.com/getsentry/sentry-go"
 	"github.com/go-chi/chi/v5"
+	"github.com/go-chi/chi/v5/middleware"
 )
 
 // A Handler is an HTTP middleware factory that provides integration with
@@ -108,6 +109,8 @@ func (h *Handler) HandleFunc(handler http.HandlerFunc) http.HandlerFunc {
 
 func (h *Handler) handle(handler http.Handler) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
+		ww := middleware.NewWrapResponseWriter(w, r.ProtoMajor)
+
 		ctx := r.Context()
 		hub := sentry.GetHubFromContext(ctx)
 		if hub == nil {
@@ -136,7 +139,9 @@ func (h *Handler) handle(handler http.Handler) http.HandlerFunc {
 		// TODO(tracing): use custom response writer to intercept
 		// response. Use HTTP status to add tag to transaction; set span
 		// status.
-		handler.ServeHTTP(w, r)
+		handler.ServeHTTP(ww, r)
+
+		transaction.Status = httpStatusToSentryStatus(ww.Status())
 
 		rctx := chi.RouteContext(r.Context())
 		name := rctx.RouteMethod + " " + rctx.RoutePattern()
@@ -156,5 +161,40 @@ func (h *Handler) recoverWithSentry(hub *sentry.Hub, r *http.Request) {
 		if h.repanic {
 			panic(err)
 		}
+	}
+}
+
+func httpStatusToSentryStatus(status int) sentry.SpanStatus {
+	// c.f. https://develop.sentry.dev/sdk/event-payloads/span/
+
+	if status >= 200 && status < 400 {
+		return sentry.SpanStatusOK
+	}
+
+	switch status {
+	case 499:
+		return sentry.SpanStatusCanceled
+	case 500:
+		return sentry.SpanStatusInternalError
+	case 400:
+		return sentry.SpanStatusInvalidArgument
+	case 504:
+		return sentry.SpanStatusDeadlineExceeded
+	case 404:
+		return sentry.SpanStatusNotFound
+	case 409:
+		return sentry.SpanStatusAlreadyExists
+	case 403:
+		return sentry.SpanStatusPermissionDenied
+	case 429:
+		return sentry.SpanStatusResourceExhausted
+	case 501:
+		return sentry.SpanStatusUnimplemented
+	case 503:
+		return sentry.SpanStatusUnavailable
+	case 401:
+		return sentry.SpanStatusUnauthenticated
+	default:
+		return sentry.SpanStatusUnknown
 	}
 }
