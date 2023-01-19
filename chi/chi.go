@@ -133,7 +133,7 @@ func (h *Handler) handle(handler http.Handler) http.HandlerFunc {
 		// TODO(tracing): if the next handler.ServeHTTP panics, store
 		// information on the transaction accordingly (status, tag,
 		// level?, ...).
-		r = r.WithContext(transaction.Context())
+		*r = *r.WithContext(transaction.Context())
 		hub.Scope().SetRequest(r)
 		defer h.recoverWithSentry(hub, r)
 		// TODO(tracing): use custom response writer to intercept
